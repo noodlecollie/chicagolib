@@ -1,0 +1,12 @@
+*.mk
+*.exe
+*.map
+*.lk1
+*.mk1
+*.sym
+*.obj
+*.err
+*.o
+*/*~
+
+build/

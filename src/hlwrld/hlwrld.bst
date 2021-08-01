@@ -1,0 +1,2 @@
+[sources]
+main.c
