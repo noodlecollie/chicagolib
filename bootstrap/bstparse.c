@@ -11,12 +11,14 @@
 #define CH_COMMENT '#'
 
 #define CATEGORY_SOURCES "sources"
+#define CATEGORY_COMPILE_OPTIONS "compileoptions"
 
 typedef enum _ParseState
 {
 	PS_FAILURE = -1,
 	PS_DEFAULT = 0,
-	PS_SOURCE_FILES
+	PS_SOURCE_FILES,
+	PS_COMPILE_OPTIONS
 } ParseState;
 
 typedef struct _CategoryToState
@@ -39,11 +41,57 @@ static inline char* SkipWhitespace(char* str)
 	return str;
 }
 
+static inline size_t TrimTrailingWhitespace(char* str, size_t length)
+{
+	if ( length < 1 )
+	{
+		length = strlen(str);
+
+		if ( length < 1 )
+		{
+			return 0;
+		}
+	}
+
+	for ( ; length > 0; --length )
+	{
+		if ( !isspace(str[length - 1]) )
+		{
+			break;
+		}
+
+		str[length - 1] = '\0';
+	}
+
+	return length;
+}
+
+static inline char* FindLineComment(char* str)
+{
+	bool inQuotes = false;
+	bool firstChar = true;
+
+	for ( ; *str; ++str, firstChar = false )
+	{
+		if ( *str == '"' && (firstChar || *(str - 1) != '\\') )
+		{
+			inQuotes = !inQuotes;
+		}
+		else if ( *str == '#' && !inQuotes )
+		{
+			return str;
+		}
+	}
+
+	return NULL;
+}
+
 static ParseState StateForCategory(const char* categoryName)
 {
 	static const CategoryToState CTS_MAP[] =
 	{
 		{ CATEGORY_SOURCES, PS_SOURCE_FILES },
+		{ CATEGORY_COMPILE_OPTIONS, PS_COMPILE_OPTIONS },
 		{ NULL, PS_FAILURE }
 	};
 
@@ -103,20 +151,19 @@ static ParseState DetermineCategory(BootstrapFile* file, size_t lineNumber, cons
 	return nextState;
 }
 
-static ParseState ParseLine_Default(BootstrapFile* file, size_t lineNumber, char* line)
+static inline ParseState ParseLine_Default(BootstrapFile* file, size_t lineNumber, char* line)
 {
-	if ( !LineDenotesCategory(line) )
-	{
-		fprintf(stderr, "%s(%u): Error: Expected \"%c...%c\" category declaration\n",
-			BootstrapFile_GetFilePath(file),
-			lineNumber,
-			CH_BEGIN_CATEGORY,
-			CH_END_CATEGORY);
+	(void)line;
 
-		return PS_FAILURE;
-	}
+	// We haven't come across a category yet, so refuse anything that isn't one.
+	// If this line were a category, it'd have been picked up by now already.
+	fprintf(stderr, "%s(%u): Error: Expected \"%c...%c\" category declaration\n",
+		BootstrapFile_GetFilePath(file),
+		lineNumber,
+		CH_BEGIN_CATEGORY,
+		CH_END_CATEGORY);
 
-	return DetermineCategory(file, lineNumber, line + 1);
+	return PS_FAILURE;
 }
 
 static ParseState ParseLine_SourceFile(BootstrapFile* file, size_t lineNumber, char* line)
@@ -137,6 +184,21 @@ static ParseState ParseLine_SourceFile(BootstrapFile* file, size_t lineNumber, c
 	}
 
 	return PS_SOURCE_FILES;
+}
+
+static ParseState ParseLine_CompileOptions(BootstrapFile* file, size_t lineNumber, char* line, size_t lineLength)
+{
+	if ( !BootstrapFile_AppendCompileOptions(file, line, lineLength) )
+	{
+		fprintf(stderr, "%s(%u): Error: Could not allocate internal memory to track compile options \"%s\".\n",
+			BootstrapFile_GetFilePath(file),
+			lineNumber,
+			line);
+
+		return PS_FAILURE;
+	}
+
+	return PS_COMPILE_OPTIONS;
 }
 
 void BootstrapParse_SetProjectFilePath(const char* path)
@@ -206,6 +268,7 @@ size_t BootstrapParse_ReadLine(FILE* inFile, char* buffer, size_t size)
 bool BootstrapParse_ParseLine(BootstrapFile* file, size_t lineNumber, char* line, size_t lineLength)
 {
 	char* firstChar = NULL;
+	char* trailingComment = NULL;
 
 	if ( !file || !line || lineLength < 1 )
 	{
@@ -213,6 +276,7 @@ bool BootstrapParse_ParseLine(BootstrapFile* file, size_t lineNumber, char* line
 	}
 
 	firstChar = SkipWhitespace(line);
+	lineLength -= firstChar - line;
 
 	if ( !(*firstChar) )
 	{
@@ -222,27 +286,51 @@ bool BootstrapParse_ParseLine(BootstrapFile* file, size_t lineNumber, char* line
 
 	if ( LineDenotesComment(firstChar) )
 	{
-		// Do nothing.
+		// Line begins with a comment - do nothing.
 		return true;
 	}
 
-	switch ( PState )
+	// Ensure any trailing line comment is trimmed.
+	trailingComment = FindLineComment(firstChar);
+
+	if ( trailingComment )
 	{
-		case PS_DEFAULT:
-		{
-			PState = ParseLine_Default(file, lineNumber, firstChar);
-			break;
-		}
+		*trailingComment = '\0';
+		lineLength = trailingComment - firstChar;
+	}
 
-		case PS_SOURCE_FILES:
-		{
-			PState = ParseLine_SourceFile(file, lineNumber, firstChar);
-			break;
-		}
+	lineLength = TrimTrailingWhitespace(firstChar, lineLength);
 
-		default:
+	if ( LineDenotesCategory(firstChar) )
+	{
+		PState = DetermineCategory(file, lineNumber, line + 1);
+	}
+	else
+	{
+		switch ( PState )
 		{
-			break;
+			case PS_DEFAULT:
+			{
+				PState = ParseLine_Default(file, lineNumber, firstChar);
+				break;
+			}
+
+			case PS_SOURCE_FILES:
+			{
+				PState = ParseLine_SourceFile(file, lineNumber, firstChar);
+				break;
+			}
+
+			case PS_COMPILE_OPTIONS:
+			{
+				PState = ParseLine_CompileOptions(file, lineNumber, firstChar, lineLength);
+				break;
+			}
+
+			default:
+			{
+				break;
+			}
 		}
 	}
 

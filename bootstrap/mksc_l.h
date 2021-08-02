@@ -65,8 +65,10 @@ static void WritePrelude(BootstrapFile* inFile, FILE* outFile)
 	// TODO: Options based on what was specified in the .bst file
 	fputs(".lk1\n"
 		"\n"
-		"\twcc386 \"$1$2.c\" -i=\"$INCLUDE\" -dPLATFORM_LINUX=1 -d__STDC_WANT_LIB_EXT1__=1 -w4 -we -e25 -zq -ze -od -d2 -6r -bt=linux -fo=.obj -mf\n"
-		"\n"
+		"\twcc386 \"$1$2.c\" -i=\"$INCLUDE\" ", outFile);
+	fputs(BootstrapFile_GetCompileOptions(inFile), outFile);
+	fputs(
+		"\n\n"
 		"\tif [ $? -ne 0 ]; then\n"
 		"\t\techo \"Compilation was not successful for $1$2.c\"\n"
 		"\t\tfailures=$((failures+1))\n"

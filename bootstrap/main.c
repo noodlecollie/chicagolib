@@ -60,20 +60,31 @@ int main(int argc, char** argv)
 	BootstrapFile_SetTargetName(&LocalFile, NULL);
 
 	VLOG("Reading: %s\n", BootstrapFile_GetFilePath(&LocalFile));
+
 	BootstrapParse_SetProjectFilePath(BootstrapFile_GetFilePath(&LocalFile));
 	ReadBSTFile(inFile, &LocalFile);
-
 	fclose(inFile);
 
-	VLOG("%s: target has %u source files.\n",
-		BootstrapFile_GetFilePath(&LocalFile),
-		BootstrapFile_SourceFileCount(&LocalFile));
+	// REMOVE ME
+	printf("Compile options: %s\n", BootstrapFile_GetCompileOptions(&LocalFile));
 
-	success = MakeScript_WriteScriptFile(&LocalFile);
-
-	if ( !success )
+	if ( BootstrapFile_SourceFileCount(&LocalFile) > 0 )
 	{
-		fprintf(stderr, "Failed to write build script.\n");
+		VLOG("%s: target has %u source files.\n",
+			BootstrapFile_GetFilePath(&LocalFile),
+			BootstrapFile_SourceFileCount(&LocalFile));
+
+		success = MakeScript_WriteScriptFile(&LocalFile);
+
+		if ( !success )
+		{
+			fprintf(stderr, "Failed to write build script.\n");
+		}
+	}
+	else
+	{
+		fprintf(stderr, "%s did not provide any source files to build.\n",
+			BootstrapFile_GetFilePath(&LocalFile));
 	}
 
 	BootstrapFile_Destroy(&LocalFile);

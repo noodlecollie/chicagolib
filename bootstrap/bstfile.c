@@ -52,14 +52,26 @@ static inline bool HasFreeEntries(PathList* paths)
 	return paths->count < paths->size;
 }
 
-void BootstrapFile_Init(BootstrapFile* file)
+bool BootstrapFile_Init(BootstrapFile* file)
 {
 	if ( !file )
 	{
-		return;
+		return false;
 	}
 
 	memset(file, 0, sizeof(*file));
+
+	file->compileOptions = (char*)malloc(1);
+
+	if ( !file->compileOptions )
+	{
+		return false;
+	}
+
+	file->compileOptions[0] = '\0';
+	file->compileOptionsLength = 1;
+
+	return true;
 }
 
 void BootstrapFile_Destroy(BootstrapFile* file)
@@ -70,6 +82,13 @@ void BootstrapFile_Destroy(BootstrapFile* file)
 	}
 
 	FreePathList(&file->sourceFiles);
+
+	if ( file->compileOptions )
+	{
+		free(file->compileOptions);
+		file->compileOptions = NULL;
+		file->compileOptionsLength = 0;
+	}
 }
 
 bool BootstrapFile_AddSourceFile(BootstrapFile* file, const char* filePath)
@@ -114,4 +133,55 @@ void BootstrapFile_SetTargetName(BootstrapFile* file, const char* targetName)
 	}
 
 	Path_GetFileBaseName(file->fileName, file->targetName, sizeof(file->targetName));
+}
+
+bool BootstrapFile_AppendCompileOptions(BootstrapFile* file, const char* options, size_t optionsStrLen)
+{
+	char* newOptions = NULL;
+	size_t newLength = 0;
+
+	if ( !file || !options )
+	{
+		return false;
+	}
+
+	if ( !(*options) )
+	{
+		return true;
+	}
+
+	if ( optionsStrLen < 1 )
+	{
+		optionsStrLen = strlen(options);
+	}
+	newLength = file->compileOptionsLength + optionsStrLen;
+
+	if ( file->compileOptionsLength > 1 )
+	{
+		// There is already an existing string, so we need to add a space.
+		++newLength;
+	}
+
+	newOptions = (char*)realloc(file->compileOptions, newLength);
+
+	if ( !newOptions )
+	{
+		// Not enough memory.
+		return false;
+	}
+
+	if ( file->compileOptionsLength > 1 )
+	{
+		// There is already an existing string, so we need to add a space.
+		newOptions[file->compileOptionsLength - 1] = ' ';
+		memcpy(newOptions + file->compileOptionsLength, options, newLength - file->compileOptionsLength);
+	}
+	else
+	{
+		memcpy(newOptions, options, newLength);
+	}
+
+	file->compileOptions = newOptions;
+	file->compileOptionsLength = newLength;
+	return true;
 }

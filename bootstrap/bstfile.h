@@ -24,6 +24,8 @@ typedef struct _BootstrapFile
 	char targetName[BST_MAX_TARGET_NAME];
 
 	PathList sourceFiles;
+	char* compileOptions;
+	size_t compileOptionsLength;
 } BootstrapFile;
 
 static inline size_t BootstrapFile_SourceFileCount(BootstrapFile* file)
@@ -85,14 +87,19 @@ static inline const char* BootstrapFile_GetTargetName(BootstrapFile* file)
 	return file ? file->targetName : "";
 }
 
+static inline const char* BootstrapFile_GetCompileOptions(BootstrapFile* file)
+{
+	return file ? file->compileOptions : "";
+}
+
 // Assumes input file is uninitialised.
-void BootstrapFile_Init(BootstrapFile* file);
+bool BootstrapFile_Init(BootstrapFile* file);
 
 // Assumes input file is initialised.
 void BootstrapFile_Destroy(BootstrapFile* file);
 
 bool BootstrapFile_AddSourceFile(BootstrapFile* file, const char* filePath);
-
 void BootstrapFile_SetTargetName(BootstrapFile* file, const char* targetName);
+bool BootstrapFile_AppendCompileOptions(BootstrapFile* file, const char* options, size_t optionsStrLen);
 
 #endif // BOOTSTRAP_BSTFILE_H
