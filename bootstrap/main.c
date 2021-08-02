@@ -12,6 +12,8 @@ static void ReadBSTFile(FILE* inFile, BootstrapFile* outFile)
 	static char lineBuffer[BST_MAX_LINE_LENGTH];
 	size_t lineNumber = 1;
 
+	BootstrapParse_SetProjectFilePath(BootstrapFile_GetFilePath(&LocalFile));
+
 	while ( !feof(inFile) )
 	{
 		size_t lineLength;
@@ -37,9 +39,41 @@ static void ReadBSTFile(FILE* inFile, BootstrapFile* outFile)
 	}
 }
 
-int main(int argc, char** argv)
+static inline bool ReadFile()
 {
 	FILE* inFile = NULL;
+	bool success = false;
+
+	do
+	{
+		inFile = fopen(Option_BSTFilePath, "r");
+
+		if ( !inFile )
+		{
+			fprintf(stderr, "Could not open: %s\n", Option_BSTFilePath);
+			break;
+		}
+
+		BootstrapFile_SetFilePath(&LocalFile, Option_BSTFilePath);
+		BootstrapFile_SetTargetName(&LocalFile, NULL);
+
+		VLOG("Reading: %s\n", BootstrapFile_GetFilePath(&LocalFile));
+		ReadBSTFile(inFile, &LocalFile);
+
+		success = true;
+	}
+	while ( false );
+
+	if ( inFile )
+	{
+		fclose(inFile);
+	}
+
+	return success;
+}
+
+int main(int argc, char** argv)
+{
 	bool success = false;
 
 	if ( !Options_Parse(argc, argv) )
@@ -47,45 +81,40 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	inFile = fopen(Option_BSTFilePath, "r");
-
-	if ( !inFile )
+	if ( !BootstrapFile_Init(&LocalFile) )
 	{
-		fprintf(stderr, "Could not open: %s\n", Option_BSTFilePath);
+		fprintf(stderr, "Could not allocate memory to begin parsing.\n");
 		return 1;
 	}
 
-	BootstrapFile_Init(&LocalFile);
-	BootstrapFile_SetFilePath(&LocalFile, Option_BSTFilePath);
-	BootstrapFile_SetTargetName(&LocalFile, NULL);
-
-	VLOG("Reading: %s\n", BootstrapFile_GetFilePath(&LocalFile));
-
-	BootstrapParse_SetProjectFilePath(BootstrapFile_GetFilePath(&LocalFile));
-	ReadBSTFile(inFile, &LocalFile);
-	fclose(inFile);
-
-	// REMOVE ME
-	printf("Compile options: %s\n", BootstrapFile_GetCompileOptions(&LocalFile));
-
-	if ( BootstrapFile_SourceFileCount(&LocalFile) > 0 )
+	do
 	{
+		if ( !ReadFile() )
+		{
+			break;
+		}
+
+		if ( BootstrapFile_SourceFileCount(&LocalFile) < 1 )
+		{
+			fprintf(stderr, "%s did not provide any source files to build.\n",
+				BootstrapFile_GetFilePath(&LocalFile));
+
+			break;
+		}
+
 		VLOG("%s: target has %u source files.\n",
 			BootstrapFile_GetFilePath(&LocalFile),
 			BootstrapFile_SourceFileCount(&LocalFile));
 
-		success = MakeScript_WriteScriptFile(&LocalFile);
-
-		if ( !success )
+		if ( !MakeScript_WriteScriptFile(&LocalFile) )
 		{
 			fprintf(stderr, "Failed to write build script.\n");
+			break;
 		}
+
+		success = true;
 	}
-	else
-	{
-		fprintf(stderr, "%s did not provide any source files to build.\n",
-			BootstrapFile_GetFilePath(&LocalFile));
-	}
+	while ( false );
 
 	BootstrapFile_Destroy(&LocalFile);
 

@@ -151,10 +151,8 @@ static ParseState DetermineCategory(BootstrapFile* file, size_t lineNumber, cons
 	return nextState;
 }
 
-static inline ParseState ParseLine_Default(BootstrapFile* file, size_t lineNumber, char* line)
+static inline ParseState ParseLine_Default(BootstrapFile* file, size_t lineNumber)
 {
-	(void)line;
-
 	// We haven't come across a category yet, so refuse anything that isn't one.
 	// If this line were a category, it'd have been picked up by now already.
 	fprintf(stderr, "%s(%u): Error: Expected \"%c...%c\" category declaration\n",
@@ -170,7 +168,16 @@ static ParseState ParseLine_SourceFile(BootstrapFile* file, size_t lineNumber, c
 {
 	static char absPath[_MAX_PATH];
 
-	sprintf_s(absPath, sizeof(absPath), "%s/%s", RootDir, line);
+	if ( sprintf_s(absPath, sizeof(absPath), "%s/%s", RootDir, line) < 0 )
+	{
+		fprintf(stderr, "%s(%u): Error: Could not construct absolute path for %s.\n",
+			BootstrapFile_GetFilePath(file),
+			lineNumber,
+			line);
+
+		return PS_FAILURE;
+	}
+
 	VLOG("Adding source file: %s\n", absPath);
 
 	if ( !BootstrapFile_AddSourceFile(file, absPath) )
@@ -203,13 +210,11 @@ static ParseState ParseLine_CompileOptions(BootstrapFile* file, size_t lineNumbe
 
 void BootstrapParse_SetProjectFilePath(const char* path)
 {
-	if ( !path )
+	if ( !path || !_fullpath(RootDir, Path_DirName(path), sizeof(RootDir)) )
 	{
 		strcpy_s(RootDir, sizeof(RootDir), ".");
-		return;
 	}
 
-	_fullpath(RootDir, Path_DirName(path), sizeof(RootDir));
 	RootDirLength = strlen(RootDir);
 }
 
@@ -309,12 +314,6 @@ bool BootstrapParse_ParseLine(BootstrapFile* file, size_t lineNumber, char* line
 	{
 		switch ( PState )
 		{
-			case PS_DEFAULT:
-			{
-				PState = ParseLine_Default(file, lineNumber, firstChar);
-				break;
-			}
-
 			case PS_SOURCE_FILES:
 			{
 				PState = ParseLine_SourceFile(file, lineNumber, firstChar);
@@ -329,6 +328,7 @@ bool BootstrapParse_ParseLine(BootstrapFile* file, size_t lineNumber, char* line
 
 			default:
 			{
+				PState = ParseLine_Default(file, lineNumber);
 				break;
 			}
 		}

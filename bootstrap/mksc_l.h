@@ -10,6 +10,8 @@
 
 #define SCRIPT_FILE_EXT "sh"
 
+#define FPUTS(...) do { if ( fputs(__VA_ARGS__) == EOF ) return false; } while ( false )
+
 static char OutFilePath[_MAX_PATH];
 
 // Example of invoking compiler on Linux:
@@ -31,43 +33,43 @@ static bool ComputeOutputPath(BootstrapFile* inFile)
 	return Path_SetExt(OutFilePath, sizeof(OutFilePath), SCRIPT_FILE_EXT);
 }
 
-static void WritePrelude(BootstrapFile* inFile, FILE* outFile)
+static bool WritePrelude(BootstrapFile* inFile, FILE* outFile)
 {
 	const char* targetName;
 
 	targetName = BootstrapFile_GetTargetName(inFile);
 
-	fputs("# Compilation script for ", outFile);
-	fputs(BootstrapFile_GetFileName(inFile), outFile);
-	fputs(" created by Bootstrap utility\n\n", outFile);
+	FPUTS("# Compilation script for ", outFile);
+	FPUTS(BootstrapFile_GetFileName(inFile), outFile);
+	FPUTS(" created by Bootstrap utility\n\n", outFile);
 
-	fputs(
+	FPUTS(
 		"if [ -z \"$WATCOM\" ]; then\n"
 		"\techo \"No WATCOM environment variable set!\"\n"
 		"\texit 1\n"
 		"fi\n\n",
 		outFile);
 
-	fputs("export PATH=$WATCOM/binl64:$WATCOM/binl:$PATH\n", outFile);
-	fputs("export EDPATH=$WATCOM/eddat\n", outFile);
-	fputs("export INCLUDE=$WATCOM/lh\n\n", outFile);
+	FPUTS("export PATH=$WATCOM/binl64:$WATCOM/binl:$PATH\n", outFile);
+	FPUTS("export EDPATH=$WATCOM/eddat\n", outFile);
+	FPUTS("export INCLUDE=$WATCOM/lh\n\n", outFile);
 
-	fputs("failures=0\n\n", outFile);
+	FPUTS("failures=0\n\n", outFile);
 
-	fputs(
+	FPUTS(
 		"function processFile () {\n"
 		"\techo \"FIL $2.obj\" >> ",
 		outFile
 	);
 
-	fputs(targetName, outFile);
+	FPUTS(targetName, outFile);
 
 	// TODO: Options based on what was specified in the .bst file
-	fputs(".lk1\n"
+	FPUTS(".lk1\n"
 		"\n"
 		"\twcc386 \"$1$2.c\" -i=\"$INCLUDE\" ", outFile);
-	fputs(BootstrapFile_GetCompileOptions(inFile), outFile);
-	fputs(
+	FPUTS(BootstrapFile_GetCompileOptions(inFile), outFile);
+	FPUTS(
 		"\n\n"
 		"\tif [ $? -ne 0 ]; then\n"
 		"\t\techo \"Compilation was not successful for $1$2.c\"\n"
@@ -76,13 +78,15 @@ static void WritePrelude(BootstrapFile* inFile, FILE* outFile)
 		"}\n\n",
 		outFile);
 
-	fputs("# Create empty linker file\n", outFile);
-	fputs("> ", outFile);
-	fputs(targetName, outFile);
-	fputs(".lk1\n\n", outFile);
+	FPUTS("# Create empty linker file\n", outFile);
+	FPUTS("> ", outFile);
+	FPUTS(targetName, outFile);
+	FPUTS(".lk1\n\n", outFile);
+
+	return true;
 }
 
-static void WriteCompileSourceFiles(BootstrapFile* inFile, FILE* outFile)
+static bool WriteCompileSourceFiles(BootstrapFile* inFile, FILE* outFile)
 {
 	static char filePath[_MAX_PATH];
 
@@ -98,20 +102,20 @@ static void WriteCompileSourceFiles(BootstrapFile* inFile, FILE* outFile)
 
 		if ( index > 0 )
 		{
-			fputs("\n", outFile);
+			FPUTS("\n", outFile);
 		}
 
 		// Example line: echo "[1/5] /path/to/file.c"
 		sprintf_s(counter, sizeof(counter), "[%u/%u]", index + 1, fileCount);
 
-		fputs("echo \"", outFile);
-		fputs(counter, outFile);
-		fputs(" ", outFile);
-		fputs(BootstrapFile_SourceFilePath(inFile, index), outFile);
-		fputs("\"\n", outFile);
+		FPUTS("echo \"", outFile);
+		FPUTS(counter, outFile);
+		FPUTS(" ", outFile);
+		FPUTS(BootstrapFile_SourceFilePath(inFile, index), outFile);
+		FPUTS("\"\n", outFile);
 
 		// Example line: processFile "/path/to/" "file"
-		fputs("processFile \"", outFile);
+		FPUTS("processFile \"", outFile);
 
 		strcpy_s(filePath, sizeof(filePath), BootstrapFile_SourceFilePath(inFile, index));
 		lastSep = Path_IndexOfLastSeparator(filePath);
@@ -125,53 +129,59 @@ static void WriteCompileSourceFiles(BootstrapFile* inFile, FILE* outFile)
 			filePath[0] = '\0';
 		}
 
-		fputs(filePath, outFile);
-		fputs("\" \"", outFile);
+		FPUTS(filePath, outFile);
+		FPUTS("\" \"", outFile);
 
 		Path_GetFileBaseName(BootstrapFile_SourceFilePath(inFile, index), filePath, sizeof(filePath));
-		fputs(filePath, outFile);
-		fputs("\"\n", outFile);
+		FPUTS(filePath, outFile);
+		FPUTS("\"\n", outFile);
 	}
 
-	fputs("\nif [ $failures -ne 0 ]; then\n", outFile);
-	fputs("\techo \"$failures file(s) failed to compile.\"\n", outFile);
-	fputs("\texit 1\n", outFile);
-	fputs("fi\n\n", outFile);
+	FPUTS("\nif [ $failures -ne 0 ]; then\n", outFile);
+	FPUTS("\techo \"$failures file(s) failed to compile.\"\n", outFile);
+	FPUTS("\texit 1\n", outFile);
+	FPUTS("fi\n\n", outFile);
+
+	return true;
 }
 
-static void WriteLinkTarget(BootstrapFile* inFile, FILE* outFile)
+static bool WriteLinkTarget(BootstrapFile* inFile, FILE* outFile)
 {
 	const char* targetName;
 
 	targetName = BootstrapFile_GetTargetName(inFile);
 
 	// TODO: Options based on what was specified in the .bst file
-	fputs("wlink name ", outFile);
-	fputs(targetName, outFile);
-	fputs(" d all sys linux op m op maxe=25 op q op symf @", outFile);
-	fputs(targetName, outFile);
-	fputs(".lk1\n\n", outFile);
+	FPUTS("wlink name ", outFile);
+	FPUTS(targetName, outFile);
+	FPUTS(" d all sys linux op m op maxe=25 op q op symf @", outFile);
+	FPUTS(targetName, outFile);
+	FPUTS(".lk1\n\n", outFile);
 
-	fputs("if [ $? -ne 0 ]; then\n", outFile);
-	fputs("\techo \"Linking was not successful.\"\n", outFile);
-	fputs("\texit 1\n", outFile);
-	fputs("fi\n\n", outFile);
+	FPUTS("if [ $? -ne 0 ]; then\n", outFile);
+	FPUTS("\techo \"Linking was not successful.\"\n", outFile);
+	FPUTS("\texit 1\n", outFile);
+	FPUTS("fi\n\n", outFile);
 
-	fputs("echo \"Built target: ", outFile);
-	fputs(BootstrapFile_GetTargetName(inFile), outFile);
-	fputs("\"\n", outFile);
+	FPUTS("echo \"Built target: ", outFile);
+	FPUTS(BootstrapFile_GetTargetName(inFile), outFile);
+	FPUTS("\"\n", outFile);
+
+	return true;
 }
 
-static inline void WriteScript(BootstrapFile* inFile, FILE* outFile)
+static inline bool WriteScript(BootstrapFile* inFile, FILE* outFile)
 {
-	WritePrelude(inFile, outFile);
-	WriteCompileSourceFiles(inFile, outFile);
-	WriteLinkTarget(inFile, outFile);
+	return
+		WritePrelude(inFile, outFile) &&
+		WriteCompileSourceFiles(inFile, outFile) &&
+		WriteLinkTarget(inFile, outFile);
 }
 
 static bool MakeScript_Impl(BootstrapFile* inFile)
 {
 	FILE* outFile = NULL;
+	bool success = false;
 
 	if ( !ComputeOutputPath(inFile) )
 	{
@@ -189,10 +199,15 @@ static bool MakeScript_Impl(BootstrapFile* inFile)
 		return false;
 	}
 
-	WriteScript(inFile, outFile);
-
+	success = WriteScript(inFile, outFile);
 	fclose(outFile);
-	return true;
+
+	if ( !success )
+	{
+		fprintf(stderr, "Failed to write %s.\n", OutFilePath);
+	}
+
+	return success;
 }
 
 #endif // BOOTSTRAP_MKSC_L_H
