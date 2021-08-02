@@ -155,9 +155,9 @@ static void WriteLinkTarget(BootstrapFile* inFile, FILE* outFile)
 	fputs("\texit 1\n", outFile);
 	fputs("fi\n\n", outFile);
 
-	fputs("Built target: ", outFile);
+	fputs("echo \"Built target: ", outFile);
 	fputs(BootstrapFile_GetTargetName(inFile), outFile);
-	fputs("\n");
+	fputs("\"\n", outFile);
 }
 
 static inline void WriteScript(BootstrapFile* inFile, FILE* outFile)
