@@ -1,8 +1,10 @@
+[target]
+	hlwrld
+
 [compileoptions]
-	-d__STDC_WANT_LIB_EXT1__=1	# Want clib extensions
 	-wx			# Warnings at maximum level
 	-we			# Warnings as errors
-	-e25		# ?
+	-e25		# Max 25 errors before stopping compilation
 	-zq			# Compile quietly, display only error messages
 	-ze			# Enable extensions
 	-od			# All optimisations disabled
@@ -10,7 +12,7 @@
 	-6r			# Pentium pro register calling conventions
 	-bt=linux	# Build target is Linux
 	-fo=.obj	# Object file extension is .obj
-	-mf			# Flat memory model (small code/small data)
+	-mf			# 32-bit flat memory model (small code/small data)
 
 [sources]
 	main.c

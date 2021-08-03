@@ -7,7 +7,7 @@
 
 static BootstrapFile LocalFile;
 
-static void ReadBSTFile(FILE* inFile, BootstrapFile* outFile)
+static bool ReadBSTFile(FILE* inFile, BootstrapFile* outFile)
 {
 	static char lineBuffer[BST_MAX_LINE_LENGTH];
 	size_t lineNumber = 1;
@@ -32,11 +32,16 @@ static void ReadBSTFile(FILE* inFile, BootstrapFile* outFile)
 
 		if ( lineLength > 0 )
 		{
-			BootstrapParse_ParseLine(&LocalFile, lineNumber, lineBuffer, lineLength);
+			if ( !BootstrapParse_ParseLine(&LocalFile, lineNumber, lineBuffer, lineLength) )
+			{
+				return false;
+			}
 		}
 
 		++lineNumber;
 	}
+
+	return true;
 }
 
 static inline bool ReadFile()
@@ -58,9 +63,7 @@ static inline bool ReadFile()
 		BootstrapFile_SetTargetName(&LocalFile, NULL);
 
 		VLOG("Reading: %s\n", BootstrapFile_GetFilePath(&LocalFile));
-		ReadBSTFile(inFile, &LocalFile);
-
-		success = true;
+		success = ReadBSTFile(inFile, &LocalFile);
 	}
 	while ( false );
 

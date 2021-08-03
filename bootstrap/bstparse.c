@@ -12,13 +12,15 @@
 
 #define CATEGORY_SOURCES "sources"
 #define CATEGORY_COMPILE_OPTIONS "compileoptions"
+#define CATEGORY_TARGET_NAME "target"
 
 typedef enum _ParseState
 {
 	PS_FAILURE = -1,
 	PS_DEFAULT = 0,
 	PS_SOURCE_FILES,
-	PS_COMPILE_OPTIONS
+	PS_COMPILE_OPTIONS,
+	PS_TARGET_NAME
 } ParseState;
 
 typedef struct _CategoryToState
@@ -92,6 +94,7 @@ static ParseState StateForCategory(const char* categoryName)
 	{
 		{ CATEGORY_SOURCES, PS_SOURCE_FILES },
 		{ CATEGORY_COMPILE_OPTIONS, PS_COMPILE_OPTIONS },
+		{ CATEGORY_TARGET_NAME, PS_TARGET_NAME },
 		{ NULL, PS_FAILURE }
 	};
 
@@ -140,7 +143,7 @@ static ParseState DetermineCategory(BootstrapFile* file, size_t lineNumber, cons
 
 	if ( nextState == PS_FAILURE )
 	{
-		fprintf(stderr, "%s(%u): Error: Unrecognised category \"%s\"\n",
+		fprintf(stderr, "%s(%u): Error: Unrecognised category \"%s\".\n",
 			BootstrapFile_GetFilePath(file),
 			lineNumber,
 			line);
@@ -155,11 +158,9 @@ static inline ParseState ParseLine_Default(BootstrapFile* file, size_t lineNumbe
 {
 	// We haven't come across a category yet, so refuse anything that isn't one.
 	// If this line were a category, it'd have been picked up by now already.
-	fprintf(stderr, "%s(%u): Error: Expected \"%c...%c\" category declaration\n",
+	fprintf(stderr, "%s(%u): Error: Expected category declaration.\n",
 		BootstrapFile_GetFilePath(file),
-		lineNumber,
-		CH_BEGIN_CATEGORY,
-		CH_END_CATEGORY);
+		lineNumber);
 
 	return PS_FAILURE;
 }
@@ -206,6 +207,12 @@ static ParseState ParseLine_CompileOptions(BootstrapFile* file, size_t lineNumbe
 	}
 
 	return PS_COMPILE_OPTIONS;
+}
+
+static ParseState ParseLine_TargetName(BootstrapFile* file, char* line)
+{
+	BootstrapFile_SetTargetName(file, line);
+	return PS_DEFAULT;
 }
 
 void BootstrapParse_SetProjectFilePath(const char* path)
@@ -323,6 +330,12 @@ bool BootstrapParse_ParseLine(BootstrapFile* file, size_t lineNumber, char* line
 			case PS_COMPILE_OPTIONS:
 			{
 				PState = ParseLine_CompileOptions(file, lineNumber, firstChar, lineLength);
+				break;
+			}
+
+			case PS_TARGET_NAME:
+			{
+				PState = ParseLine_TargetName(file, firstChar);
 				break;
 			}
 
