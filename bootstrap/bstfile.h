@@ -10,6 +10,12 @@
 #define BST_MAX_TARGET_NAME 32
 #define BST_MAX_LINE_LENGTH 512
 
+typedef enum _TargetType
+{
+	TT_EXECUTABLE = 0,
+	TT_STATIC_LIB
+} TargetType;
+
 typedef struct _PathList
 {
 	char** list;
@@ -21,7 +27,9 @@ typedef struct _BootstrapFile
 {
 	char fullPath[_MAX_PATH];
 	const char* fileName;
+
 	char targetName[BST_MAX_TARGET_NAME];
+	TargetType targetType;
 
 	PathList sourceFiles;
 	char* compileOptions;
@@ -90,6 +98,19 @@ static inline const char* BootstrapFile_GetTargetName(BootstrapFile* file)
 static inline const char* BootstrapFile_GetCompileOptions(BootstrapFile* file)
 {
 	return file ? file->compileOptions : "";
+}
+
+static inline TargetType BootstrapFile_GetTargetType(BootstrapFile* file)
+{
+	return file ? file->targetType : TT_EXECUTABLE;
+}
+
+static inline void BootstrapFile_SetTargetType(BootstrapFile* file, TargetType tType)
+{
+	if ( file )
+	{
+		file->targetType = tType;
+	}
 }
 
 // Assumes input file is uninitialised.

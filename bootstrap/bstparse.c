@@ -11,8 +11,12 @@
 #define CH_COMMENT '#'
 
 #define CATEGORY_SOURCES "sources"
-#define CATEGORY_COMPILE_OPTIONS "compileoptions"
-#define CATEGORY_TARGET_NAME "target"
+#define CATEGORY_COMPILE_OPTIONS "compile_options"
+#define CATEGORY_TARGET_NAME "target_name"
+#define CATEGORY_TARGET_TYPE "target_type"
+
+#define TARGET_TYPE_EXECUTABLE "executable"
+#define TARGET_TYPE_STATIC_LIB "static_lib"
 
 typedef enum _ParseState
 {
@@ -20,7 +24,8 @@ typedef enum _ParseState
 	PS_DEFAULT = 0,
 	PS_SOURCE_FILES,
 	PS_COMPILE_OPTIONS,
-	PS_TARGET_NAME
+	PS_TARGET_NAME,
+	PS_TARGET_TYPE
 } ParseState;
 
 typedef struct _CategoryToState
@@ -95,6 +100,7 @@ static ParseState StateForCategory(const char* categoryName)
 		{ CATEGORY_SOURCES, PS_SOURCE_FILES },
 		{ CATEGORY_COMPILE_OPTIONS, PS_COMPILE_OPTIONS },
 		{ CATEGORY_TARGET_NAME, PS_TARGET_NAME },
+		{ CATEGORY_TARGET_TYPE, PS_TARGET_TYPE },
 		{ NULL, PS_FAILURE }
 	};
 
@@ -212,6 +218,29 @@ static ParseState ParseLine_CompileOptions(BootstrapFile* file, size_t lineNumbe
 static ParseState ParseLine_TargetName(BootstrapFile* file, char* line)
 {
 	BootstrapFile_SetTargetName(file, line);
+	return PS_DEFAULT;
+}
+
+static ParseState ParseLine_TargetType(BootstrapFile* file, size_t lineNumber, char* line)
+{
+	if ( strcmp(line, TARGET_TYPE_EXECUTABLE) == 0 )
+	{
+		BootstrapFile_SetTargetType(file, TT_EXECUTABLE);
+	}
+	else if ( strcmp(line, TARGET_TYPE_STATIC_LIB) == 0 )
+	{
+		BootstrapFile_SetTargetType(file, TT_STATIC_LIB);
+	}
+	else
+	{
+		fprintf(stderr, "%s(%u): Error: Unrecognised target type \"%s\".\n",
+			BootstrapFile_GetFilePath(file),
+			lineNumber,
+			line);
+
+		return PS_FAILURE;
+	}
+
 	return PS_DEFAULT;
 }
 
@@ -336,6 +365,12 @@ bool BootstrapParse_ParseLine(BootstrapFile* file, size_t lineNumber, char* line
 			case PS_TARGET_NAME:
 			{
 				PState = ParseLine_TargetName(file, firstChar);
+				break;
+			}
+
+			case PS_TARGET_TYPE:
+			{
+				PState = ParseLine_TargetType(file, lineNumber, firstChar);
 				break;
 			}
 

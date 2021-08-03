@@ -10,6 +10,9 @@
 
 #define SCRIPT_FILE_EXT "sh"
 
+#define LK_STATEMENT_EXECUTABLE "FIL $2.obj"
+#define LK_STATEMENT_STATIC_LIB "+'$2.obj'"
+
 #define FPUTS(...) do { if ( fputs(__VA_ARGS__) == EOF ) return false; } while ( false )
 
 static char OutFilePath[_MAX_PATH];
@@ -33,11 +36,40 @@ static bool ComputeOutputPath(BootstrapFile* inFile)
 	return Path_SetExt(OutFilePath, sizeof(OutFilePath), SCRIPT_FILE_EXT);
 }
 
+static inline const char* GetLinkerListFileStatement(BootstrapFile* inFile)
+{
+	switch ( BootstrapFile_GetTargetType(inFile) )
+	{
+		case TT_EXECUTABLE:
+		{
+			return LK_STATEMENT_EXECUTABLE;
+		}
+
+		case TT_STATIC_LIB:
+		{
+			return LK_STATEMENT_STATIC_LIB;
+		}
+
+		default:
+		{
+			return NULL;
+		}
+	}
+}
+
 static bool WritePrelude(BootstrapFile* inFile, FILE* outFile)
 {
 	const char* targetName;
+	const char* linkerListFileStatement;
 
 	targetName = BootstrapFile_GetTargetName(inFile);
+	linkerListFileStatement = GetLinkerListFileStatement(inFile);
+
+	if ( !linkerListFileStatement )
+	{
+		fprintf(stderr, "Unrecognised target type when writing %s\n", OutFilePath);
+		return false;
+	}
 
 	FPUTS("# Compilation script for ", outFile);
 	FPUTS(BootstrapFile_GetFileName(inFile), outFile);
@@ -58,16 +90,17 @@ static bool WritePrelude(BootstrapFile* inFile, FILE* outFile)
 
 	FPUTS(
 		"function processFile () {\n"
-		"\techo \"FIL $2.obj\" >> ",
-		outFile
-	);
+		"\techo \"",
+		outFile);
 
+	FPUTS(linkerListFileStatement, outFile);
+	FPUTS("\" >> ", outFile);
 	FPUTS(targetName, outFile);
 
-	// TODO: Options based on what was specified in the .bst file
 	FPUTS(".lk1\n"
 		"\n"
-		"\twcc386 \"$1$2.c\" -i=\"$INCLUDE\" ", outFile);
+		"\twcc386 \"$1$2.c\" -i=\"$INCLUDE\" ",
+		outFile);
 	FPUTS(BootstrapFile_GetCompileOptions(inFile), outFile);
 	FPUTS(
 		"\n\n"
@@ -145,7 +178,7 @@ static bool WriteCompileSourceFiles(BootstrapFile* inFile, FILE* outFile)
 	return true;
 }
 
-static bool WriteLinkTarget(BootstrapFile* inFile, FILE* outFile)
+static bool WriteLinkExecutable(BootstrapFile* inFile, FILE* outFile)
 {
 	const char* targetName;
 
@@ -164,10 +197,57 @@ static bool WriteLinkTarget(BootstrapFile* inFile, FILE* outFile)
 	FPUTS("fi\n\n", outFile);
 
 	FPUTS("echo \"Built target: ", outFile);
-	FPUTS(BootstrapFile_GetTargetName(inFile), outFile);
+	FPUTS(targetName, outFile);
 	FPUTS("\"\n", outFile);
 
 	return true;
+}
+
+static bool WriteLinkStaticLib(BootstrapFile* inFile, FILE* outFile)
+{
+	const char* targetName;
+
+	targetName = BootstrapFile_GetTargetName(inFile);
+
+	// TODO: Options based on what was specified in the .bst file
+	FPUTS("wlib -b -c -n -q -p=512 ", outFile);
+	FPUTS(targetName, outFile);
+	FPUTS(".lib @", outFile);
+	FPUTS(targetName, outFile);
+	FPUTS(".lk1\n\n", outFile);
+
+	FPUTS("if [ $? -ne 0 ]; then\n", outFile);
+	FPUTS("\techo \"Linking was not successful.\"\n", outFile);
+	FPUTS("\texit 1\n", outFile);
+	FPUTS("fi\n\n", outFile);
+
+	FPUTS("echo \"Built target: ", outFile);
+	FPUTS(targetName, outFile);
+	FPUTS("\"\n", outFile);
+
+	return true;
+}
+
+static bool WriteLinkTarget(BootstrapFile* inFile, FILE* outFile)
+{
+	switch ( BootstrapFile_GetTargetType(inFile) )
+	{
+		case TT_EXECUTABLE:
+		{
+			return WriteLinkExecutable(inFile, outFile);
+		}
+
+		case TT_STATIC_LIB:
+		{
+			return WriteLinkStaticLib(inFile, outFile);
+		}
+
+		default:
+		{
+			fprintf(stderr, "Unrecognised target type when writing %s\n", OutFilePath);
+			return false;
+		}
+	}
 }
 
 static inline bool WriteScript(BootstrapFile* inFile, FILE* outFile)

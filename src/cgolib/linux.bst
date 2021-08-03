@@ -1,8 +1,8 @@
 [target_name]
-	hlwrld
+	cgolib
 
 [target_type]
-	executable
+	static_lib
 
 [compile_options]
 	-wx			# Warnings at maximum level
@@ -18,4 +18,4 @@
 	-mf			# 32-bit flat memory model (small code/small data)
 
 [sources]
-	main.c
+	cgolib.c
