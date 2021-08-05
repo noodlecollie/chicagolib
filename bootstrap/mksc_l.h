@@ -7,6 +7,7 @@
 #include "bstfile.h"
 #include "options.h"
 #include "path.h"
+#include "platform.h"
 
 #define SCRIPT_FILE_EXT "sh"
 
@@ -14,17 +15,9 @@
 #define LK_STATEMENT_STATIC_LIB "+'$2.obj'"
 
 #define FPUTS(...) do { if ( fputs(__VA_ARGS__) == EOF ) return false; } while ( false )
+#define FPRINTF(...) do { if ( fprintf(__VA_ARGS__) < 0 ) return false; } while ( false )
 
 static char OutFilePath[_MAX_PATH];
-
-// Example of invoking compiler on Linux:
-// wcc386 myfile.c -i="$WATCOM/lh" -d__STDC_WANT_LIB_EXT1__=1 -dPLATFORM_LINUX=1 -w4 -we -e25 -zq -ze -od -d2 -6r -bt=linux -fo=.obj -mf
-
-// Example of adding to linker list file on Linux:
-// echo "FIL myfile.obj" >> myprog.lk1
-
-// Example of invoking linker on Linux:
-// wlink name myprog d all sys linux op m op maxe=25 op q op symf @myprog.lk1
 
 static bool ComputeOutputPath(BootstrapFile* inFile)
 {
@@ -60,9 +53,11 @@ static inline const char* GetLinkerListFileStatement(BootstrapFile* inFile)
 static bool WritePrelude(BootstrapFile* inFile, FILE* outFile)
 {
 	const char* targetName;
+	const char* targetPlatform;
 	const char* linkerListFileStatement;
 
 	targetName = BootstrapFile_GetTargetName(inFile);
+	targetPlatform = Platform_IDToString(BootstrapFile_GetTargetPlatform(inFile));
 	linkerListFileStatement = GetLinkerListFileStatement(inFile);
 
 	if ( !linkerListFileStatement )
@@ -71,50 +66,51 @@ static bool WritePrelude(BootstrapFile* inFile, FILE* outFile)
 		return false;
 	}
 
-	FPUTS("# Compilation script for ", outFile);
-	FPUTS(BootstrapFile_GetFileName(inFile), outFile);
-	FPUTS(" created by Bootstrap utility\n\n", outFile);
+	FPRINTF(outFile,
+		"# Compilation script for %s created by Bootstrap utility\n\n",
+		BootstrapFile_GetFileName(inFile));
 
-	FPUTS(
+	FPRINTF(outFile,
 		"if [ -z \"$WATCOM\" ]; then\n"
 		"\techo \"No WATCOM environment variable set!\"\n"
 		"\texit 1\n"
-		"fi\n\n",
-		outFile);
+		"fi\n\n");
 
-	FPUTS("export PATH=$WATCOM/binl64:$WATCOM/binl:$PATH\n", outFile);
-	FPUTS("export EDPATH=$WATCOM/eddat\n", outFile);
-	FPUTS("export INCLUDE=$WATCOM/lh\n\n", outFile);
+	FPRINTF(outFile,
+		"export PATH=$WATCOM/binl64:$WATCOM/binl:$PATH\n"
+		"export EDPATH=$WATCOM/eddat\n"
+		"export INCLUDE=$WATCOM/lh\n\n");
 
-	FPUTS("failures=0\n\n", outFile);
+	FPRINTF(outFile, "failures=0\n\n");
 
-	FPUTS(
+	FPRINTF(outFile,
 		"function processFile () {\n"
-		"\techo \"",
-		outFile);
+		"\techo \"%s\" >> %s.lk1\n\n",
+		linkerListFileStatement,
+		targetName);
 
-	FPUTS(linkerListFileStatement, outFile);
-	FPUTS("\" >> ", outFile);
-	FPUTS(targetName, outFile);
+	FPRINTF(outFile,
+		"\twcc386 \"$1$2.c\" -i=\"$INCLUDE\"");
 
-	FPUTS(".lk1\n"
-		"\n"
-		"\twcc386 \"$1$2.c\" -i=\"$INCLUDE\" ",
-		outFile);
-	FPUTS(BootstrapFile_GetCompileOptions(inFile), outFile);
-	FPUTS(
-		"\n\n"
+	if ( targetPlatform && *targetPlatform )
+	{
+		FPRINTF(outFile, " -bt=%s", targetPlatform);
+	}
+
+	FPRINTF(outFile, " %s\n\n",
+		BootstrapFile_GetCompileOptions(inFile));
+
+	FPRINTF(outFile,
 		"\tif [ $? -ne 0 ]; then\n"
 		"\t\techo \"Compilation was not successful for $1$2.c\"\n"
 		"\t\tfailures=$((failures+1))\n"
 		"\tfi\n"
-		"}\n\n",
-		outFile);
+		"}\n\n");
 
-	FPUTS("# Create empty linker file\n", outFile);
-	FPUTS("> ", outFile);
-	FPUTS(targetName, outFile);
-	FPUTS(".lk1\n\n", outFile);
+	FPRINTF(outFile,
+		"# Create empty linker file\n"
+		"> %s.lk1\n\n",
+		targetName);
 
 	return true;
 }
@@ -130,25 +126,14 @@ static bool WriteCompileSourceFiles(BootstrapFile* inFile, FILE* outFile)
 
 	for ( index = 0; index < fileCount; ++index )
 	{
-		char counter[32];
 		int lastSep = -1;
 
-		if ( index > 0 )
-		{
-			FPUTS("\n", outFile);
-		}
-
-		// Example line: echo "[1/5] /path/to/file.c"
-		sprintf_s(counter, sizeof(counter), "[%u/%u]", index + 1, fileCount);
-
-		FPUTS("echo \"", outFile);
-		FPUTS(counter, outFile);
-		FPUTS(" ", outFile);
-		FPUTS(BootstrapFile_SourceFilePath(inFile, index), outFile);
-		FPUTS("\"\n", outFile);
-
-		// Example line: processFile "/path/to/" "file"
-		FPUTS("processFile \"", outFile);
+		FPRINTF(outFile,
+			"%secho \"[%u/%u] %s\"\n",
+			index > 0 ? "\n" : "",
+			index + 1,
+			fileCount,
+			BootstrapFile_SourceFilePath(inFile, index));
 
 		strcpy_s(filePath, sizeof(filePath), BootstrapFile_SourceFilePath(inFile, index));
 		lastSep = Path_IndexOfLastSeparator(filePath);
@@ -162,84 +147,81 @@ static bool WriteCompileSourceFiles(BootstrapFile* inFile, FILE* outFile)
 			filePath[0] = '\0';
 		}
 
-		FPUTS(filePath, outFile);
-		FPUTS("\" \"", outFile);
+		FPRINTF(outFile,
+			"processFile \"%s\" ",
+			filePath);
 
 		Path_GetFileBaseName(BootstrapFile_SourceFilePath(inFile, index), filePath, sizeof(filePath));
-		FPUTS(filePath, outFile);
-		FPUTS("\"\n", outFile);
+		FPRINTF(outFile, "\"%s\"\n", filePath);
 	}
 
-	FPUTS("\nif [ $failures -ne 0 ]; then\n", outFile);
-	FPUTS("\techo \"$failures file(s) failed to compile.\"\n", outFile);
-	FPUTS("\texit 1\n", outFile);
-	FPUTS("fi\n\n", outFile);
+	FPRINTF(outFile,
+		"\nif [ $failures -ne 0 ]; then\n"
+		"\techo \"$failures file(s) failed to compile.\"\n"
+		"\texit 1\n"
+		"fi\n\n");
 
 	return true;
 }
 
-static bool WriteLinkExecutable(BootstrapFile* inFile, FILE* outFile)
+static inline bool WriteLinkExecutable(BootstrapFile* inFile, FILE* outFile)
+{
+	const char* targetName;
+	const char* targetPlatform;
+
+	targetName = BootstrapFile_GetTargetName(inFile);
+	targetPlatform = Platform_IDToString(BootstrapFile_GetTargetPlatform(inFile));
+
+	FPRINTF(outFile,
+		"wlink name %s",
+		targetName);
+
+	if ( targetPlatform && *targetPlatform )
+	{
+		FPRINTF(outFile,
+			" sys %s",
+			targetPlatform);
+	}
+
+	// TODO: Options based on what was specified in the .bst file
+	FPRINTF(outFile,
+		" d all op m op maxe=25 op q op symf @%s.lk1\n\n",
+		targetName);
+
+	return true;
+}
+
+static inline bool WriteLinkStaticLib(BootstrapFile* inFile, FILE* outFile)
 {
 	const char* targetName;
 
 	targetName = BootstrapFile_GetTargetName(inFile);
 
 	// TODO: Options based on what was specified in the .bst file
-	FPUTS("wlink name ", outFile);
-	FPUTS(targetName, outFile);
-	FPUTS(" d all sys linux op m op maxe=25 op q op symf @", outFile);
-	FPUTS(targetName, outFile);
-	FPUTS(".lk1\n\n", outFile);
-
-	FPUTS("if [ $? -ne 0 ]; then\n", outFile);
-	FPUTS("\techo \"Linking was not successful.\"\n", outFile);
-	FPUTS("\texit 1\n", outFile);
-	FPUTS("fi\n\n", outFile);
-
-	FPUTS("echo \"Built target: ", outFile);
-	FPUTS(targetName, outFile);
-	FPUTS("\"\n", outFile);
-
-	return true;
-}
-
-static bool WriteLinkStaticLib(BootstrapFile* inFile, FILE* outFile)
-{
-	const char* targetName;
-
-	targetName = BootstrapFile_GetTargetName(inFile);
-
-	// TODO: Options based on what was specified in the .bst file
-	FPUTS("wlib -b -c -n -q -p=512 ", outFile);
-	FPUTS(targetName, outFile);
-	FPUTS(".lib @", outFile);
-	FPUTS(targetName, outFile);
-	FPUTS(".lk1\n\n", outFile);
-
-	FPUTS("if [ $? -ne 0 ]; then\n", outFile);
-	FPUTS("\techo \"Linking was not successful.\"\n", outFile);
-	FPUTS("\texit 1\n", outFile);
-	FPUTS("fi\n\n", outFile);
-
-	FPUTS("echo \"Built target: ", outFile);
-	FPUTS(targetName, outFile);
-	FPUTS("\"\n", outFile);
+	FPRINTF(outFile,
+		"wlib -b -c -n -q -p=512  %s.lib @%s.lk1\n\n",
+		targetName,
+		targetName);
 
 	return true;
 }
 
 static bool WriteLinkTarget(BootstrapFile* inFile, FILE* outFile)
 {
+	bool success = false;
+
 	switch ( BootstrapFile_GetTargetType(inFile) )
 	{
 		case TT_EXECUTABLE:
 		{
-			return WriteLinkExecutable(inFile, outFile);
+			success = WriteLinkExecutable(inFile, outFile);
+			break;
 		}
 
 		case TT_STATIC_LIB:
 		{
-			return WriteLinkStaticLib(inFile, outFile);
+			success = WriteLinkStaticLib(inFile, outFile);
+			break;
 		}
 
 		default:
@@ -248,6 +230,16 @@ static bool WriteLinkTarget(BootstrapFile* inFile, FILE* outFile)
 			return false;
 		}
 	}
+
+	FPRINTF(outFile,
+		"if [ $? -ne 0 ]; then\n"
+		"\techo \"Linking was not successful.\"\n"
+		"\texit 1\n"
+		"fi\n\n");
+
+	FPRINTF(outFile, "echo \"Built target: %s\"\n", BootstrapFile_GetTargetName(inFile));
+
+	return true;
 }
 
 static inline bool WriteScript(BootstrapFile* inFile, FILE* outFile)
@@ -285,6 +277,7 @@ static bool MakeScript_Impl(BootstrapFile* inFile)
 	if ( !success )
 	{
 		fprintf(stderr, "Failed to write %s.\n", OutFilePath);
+		remove(OutFilePath);
 	}
 
 	return success;

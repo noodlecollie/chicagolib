@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "path.h"
+#include "platform.h"
 
 #define BST_MAX_TARGET_NAME 32
 #define BST_MAX_LINE_LENGTH 512
@@ -30,6 +31,7 @@ typedef struct _BootstrapFile
 
 	char targetName[BST_MAX_TARGET_NAME];
 	TargetType targetType;
+	TargetPlatform targetPlatform;
 
 	PathList sourceFiles;
 	char* compileOptions;
@@ -110,6 +112,19 @@ static inline void BootstrapFile_SetTargetType(BootstrapFile* file, TargetType t
 	if ( file )
 	{
 		file->targetType = tType;
+	}
+}
+
+static inline TargetPlatform BootstrapFile_GetTargetPlatform(BootstrapFile* file)
+{
+	return file ? file->targetPlatform : PLATFORM_ID;
+}
+
+static inline void BootstrapFile_SetTargetPlatform(BootstrapFile* file, TargetPlatform platform)
+{
+	if ( file )
+	{
+		file->targetPlatform = platform;
 	}
 }
 

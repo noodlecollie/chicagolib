@@ -2,14 +2,7 @@
 #define BOOTSTRAP_PATH_H
 
 #include <stdbool.h>
-
-#if defined(PLATFORM_WINDOWS) || defined(PLATFORM_DOS)
-#define PATH_SEP_CHAR '\\'
-#define PATH_SEP_STR "\\"
-#else
-#define PATH_SEP_CHAR '/'
-#define PATH_SEP_STR "/"
-#endif
+#include "platform.h"
 
 // For some reason the compiler's dirname() function doesn't work properly,
 // so we roll our own.

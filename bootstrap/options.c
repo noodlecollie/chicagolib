@@ -2,34 +2,77 @@
 #include <stdio.h>
 #include "options.h"
 
-typedef struct _FlagOption
+bool Option_Verbose = false;
+const char* Option_BSTFilePath = "";
+TargetPlatform Option_TargetPlatform = TP_UNSPECIFIED;
+
+typedef struct _OptionSwitch
 {
 	const char* longName;
 	const char* shortName;
 	const char* desc;
-	bool* var;
-} FlagOption;
+	bool takesArg;
+	bool (*handler)(const char*, const char*);
+} OptionSwitch;
 
-bool Option_Verbose = false;
-const char* Option_BSTFilePath = "";
-
-static const FlagOption FLAG_OPTIONS[] =
+static bool HandleVerbose(const char* key, const char* value)
 {
-	{ "--verbose", "-v", "Print operational messages to stdout.", &Option_Verbose },
-	{ NULL, NULL, NULL }
+	(void)key;
+	(void)value;
+
+	Option_Verbose = true;
+	return true;
+}
+
+static bool HandlePlatform(const char* key, const char* value)
+{
+	(void)key;
+
+	if ( !Platform_StringToID(value, &Option_TargetPlatform) )
+	{
+		fprintf(stderr, "Unrecognised target platform \"%s\".\n", value ? value : "");
+		return false;
+	}
+
+	return true;
+}
+
+static const OptionSwitch OPTION_HANDLERS[] =
+{
+	{ "--verbose", "-v", "Print operational messages to stdout.", false, &HandleVerbose },
+	{ "--platform", "-p", "Platform to build target for.", true, &HandlePlatform },
+	{ 0 }
 };
 
-static bool HandleOption(const char* option)
+static bool HandleOption(size_t argc, char** argv, size_t* index)
 {
-	const FlagOption* optStruct;
+	const OptionSwitch* optStruct;
+	const char* option = NULL;
 
-	for ( optStruct = FLAG_OPTIONS; optStruct->var; ++optStruct )
+	if ( *index >= argc )
+	{
+		return false;
+	}
+
+	option = argv[*index];
+
+	for ( optStruct = OPTION_HANDLERS; optStruct->handler; ++optStruct )
 	{
 		if ( (optStruct->shortName && strcmp(optStruct->shortName, option) == 0) ||
 		     (optStruct->longName && strcmp(optStruct->longName, option) == 0) )
 		{
-			*optStruct->var = true;
-			return true;
+			bool success = false;
+
+			if ( optStruct->takesArg && *index == argc - 1 )
+			{
+				fprintf(stderr, "Required argument for option \"%s\" was missing.\n", option);
+				return false;
+			}
+
+			success = (*optStruct->handler)(option, optStruct->takesArg ? argv[(*index) + 1] : NULL);
+
+			*index += optStruct->takesArg ? 2 : 1;
+			return success;
 		}
 	}
 
@@ -39,12 +82,12 @@ static bool HandleOption(const char* option)
 
 static inline void PrintHelp(void)
 {
-	const FlagOption* optStruct = NULL;
+	const OptionSwitch* optStruct = NULL;
 
 	fprintf(stderr, "Usage: bootstrap [options] <file.bst>\n");
 	fprintf(stderr, "  Options:\n");
 
-	for ( optStruct = FLAG_OPTIONS; optStruct->var; ++optStruct )
+	for ( optStruct = OPTION_HANDLERS; optStruct->handler; ++optStruct )
 	{
 		fprintf(stderr, "    %s%s%s : %s\n",
 			optStruct->shortName ? optStruct->shortName : "",
@@ -56,7 +99,7 @@ static inline void PrintHelp(void)
 
 bool Options_Parse(int argc, char** argv)
 {
-	int argIndex;
+	size_t argIndex;
 	bool failedOption = false;
 
 	if ( argc < 1 || !argv )
@@ -70,20 +113,23 @@ bool Options_Parse(int argc, char** argv)
 		return false;
 	}
 
-	for ( argIndex = 1; argIndex < argc; ++argIndex )
+	for ( argIndex = 1; argIndex < (size_t)argc; /* manual increment */ )
 	{
 		char* arg = argv[argIndex];
 
 		if ( *arg == '-' )
 		{
-			if ( !HandleOption(arg) )
+			// HandleOption increments index if successful.
+			if ( HandleOption((size_t)argc, argv, &argIndex) )
 			{
-				failedOption = true;
+				continue;
 			}
+
+			failedOption = true;
 		}
 		else
 		{
-			if ( argIndex != argc - 1 )
+			if ( argIndex != (size_t)(argc - 1) )
 			{
 				fprintf(stderr, "Error: Project file \"%s\" must be the final argument specified.\n", arg);
 				return false;
@@ -91,6 +137,8 @@ bool Options_Parse(int argc, char** argv)
 
 			Option_BSTFilePath = arg;
 		}
+
+		++argIndex;
 	}
 
 	return !failedOption;

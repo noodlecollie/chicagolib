@@ -61,6 +61,7 @@ static inline bool ReadFile()
 
 		BootstrapFile_SetFilePath(&LocalFile, Option_BSTFilePath);
 		BootstrapFile_SetTargetName(&LocalFile, NULL);
+		BootstrapFile_SetTargetPlatform(&LocalFile, Option_TargetPlatform);
 
 		VLOG("Reading: %s\n", BootstrapFile_GetFilePath(&LocalFile));
 		success = ReadBSTFile(inFile, &LocalFile);

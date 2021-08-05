@@ -3,8 +3,10 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include "platform.h"
 
 extern bool Option_Verbose;
+extern TargetPlatform Option_TargetPlatform;
 extern const char* Option_BSTFilePath;
 
 bool Options_Parse(int argc, char** argv);

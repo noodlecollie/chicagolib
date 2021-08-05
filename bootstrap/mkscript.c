@@ -3,7 +3,7 @@
 #include "mkscript.h"
 #include "options.h"
 
-#ifdef PLATFORM_LINUX
+#ifdef __LINUX__
 #include "mksc_l.h"
 #else
 #error No MakeScript implementation available for the chosen platform!
