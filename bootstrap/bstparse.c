@@ -9,11 +9,15 @@
 #define CH_BEGIN_CATEGORY '['
 #define CH_END_CATEGORY ']'
 #define CH_COMMENT '#'
+#define CH_CATEGORY_PREDICATE_SEP ':'
+#define CH_CATEGORY_KV_SEP '='
 
 #define CATEGORY_SOURCES "sources"
 #define CATEGORY_COMPILE_OPTIONS "compile_options"
 #define CATEGORY_TARGET_NAME "target_name"
 #define CATEGORY_TARGET_TYPE "target_type"
+
+#define PREDICATE_PLATFORM "platform"
 
 #define TARGET_TYPE_EXECUTABLE "executable"
 #define TARGET_TYPE_STATIC_LIB "static_lib"
@@ -22,6 +26,7 @@ typedef enum _ParseState
 {
 	PS_FAILURE = -1,
 	PS_DEFAULT = 0,
+	PS_SKIP_SECTION,
 	PS_SOURCE_FILES,
 	PS_COMPILE_OPTIONS,
 	PS_TARGET_NAME,
@@ -93,6 +98,62 @@ static inline char* FindLineComment(char* str)
 	return NULL;
 }
 
+static bool CheckForPredicatedCategory(BootstrapFile* file, size_t lineNumber, char* categoryString, char** key, char** value)
+{
+	char* predicateSep;
+	char* kvSep;
+
+	predicateSep = strchr(categoryString, CH_CATEGORY_PREDICATE_SEP);
+	kvSep = strchr(categoryString, CH_CATEGORY_KV_SEP);
+
+	if ( !!(predicateSep) != !!(kvSep) )
+	{
+		fprintf(stderr, "%s(%u): Error: '%c' only allowed in a category predicate statement such as \"[category%ckey%cvalue]\".\n",
+			BootstrapFile_GetFilePath(file),
+			lineNumber,
+			predicateSep ? CH_CATEGORY_PREDICATE_SEP : CH_CATEGORY_KV_SEP,
+			CH_CATEGORY_PREDICATE_SEP,
+			CH_CATEGORY_KV_SEP);
+
+		return false;
+	}
+
+	if ( kvSep < predicateSep )
+	{
+		fprintf(stderr, "%s(%u): Error: '%c' encountered before '%c' in category predicate statement.\n",
+			BootstrapFile_GetFilePath(file),
+			lineNumber,
+			CH_CATEGORY_KV_SEP,
+			CH_CATEGORY_PREDICATE_SEP);
+
+		return false;
+	}
+
+	// Split the line into sections.
+
+	if ( predicateSep )
+	{
+		*(predicateSep++) = '\0';
+	}
+
+	if ( kvSep )
+	{
+		*(kvSep++) = '\0';
+	}
+
+	if ( key )
+	{
+		*key = predicateSep;
+	}
+
+	if ( value )
+	{
+		*value = kvSep;
+	}
+
+	return true;
+}
+
 static ParseState StateForCategory(const char* categoryName)
 {
 	static const CategoryToState CTS_MAP[] =
@@ -117,6 +178,27 @@ static ParseState StateForCategory(const char* categoryName)
 	return PS_FAILURE;
 }
 
+static ParseState StateForPredicatedCategory(BootstrapFile* file, ParseState nextState, const char* key, const char* value)
+{
+	if ( !key || !value || !file )
+	{
+		return nextState;
+	}
+
+	if ( strcmp(key, PREDICATE_PLATFORM) == 0 )
+	{
+		const char* targetPlatformName;
+
+		targetPlatformName = Platform_IDToString(BootstrapFile_GetTargetPlatform(file));
+
+		return (targetPlatformName && *targetPlatformName && strcmp(targetPlatformName, value) == 0)
+			? nextState
+			: PS_SKIP_SECTION;
+	}
+
+	return nextState;
+}
+
 static inline bool LineDenotesCategory(const char* line)
 {
 	return *line == CH_BEGIN_CATEGORY;
@@ -127,10 +209,12 @@ static inline bool LineDenotesComment(const char* line)
 	return *line == CH_COMMENT;
 }
 
-static ParseState DetermineCategory(BootstrapFile* file, size_t lineNumber, const char* line)
+static ParseState DetermineCategory(BootstrapFile* file, size_t lineNumber, char* line)
 {
 	ParseState nextState = PS_FAILURE;
 	char* end;
+	char* key;
+	char* value;
 
 	end = strchr(line, CH_END_CATEGORY);
 
@@ -145,6 +229,12 @@ static ParseState DetermineCategory(BootstrapFile* file, size_t lineNumber, cons
 	}
 
 	*end = '\0';
+
+	if ( !CheckForPredicatedCategory(file, lineNumber, line, &key, &value) )
+	{
+		return PS_FAILURE;
+	}
+
 	nextState = StateForCategory(line);
 
 	if ( nextState == PS_FAILURE )
@@ -155,6 +245,11 @@ static ParseState DetermineCategory(BootstrapFile* file, size_t lineNumber, cons
 			line);
 
 		return PS_FAILURE;
+	}
+
+	if ( key && value )
+	{
+		nextState = StateForPredicatedCategory(file, nextState, key, value);
 	}
 
 	return nextState;
@@ -371,6 +466,12 @@ bool BootstrapParse_ParseLine(BootstrapFile* file, size_t lineNumber, char* line
 			case PS_TARGET_TYPE:
 			{
 				PState = ParseLine_TargetType(file, lineNumber, firstChar);
+				break;
+			}
+
+			case PS_SKIP_SECTION:
+			{
+				// Do nothing - just keep going until we get to a new category.
 				break;
 			}
 

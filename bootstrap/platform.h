@@ -24,14 +24,9 @@
 #define HOST_PLATFORM_ID TP_DOS
 #elif defined(__LINUX__)
 #define HOST_PLATFORM_ID TP_LINUX
-#else
-#define HOST_PLATFORM_ID TP_UNSPECIFIED
 #endif
 
-// The host platform ID is not allowed to be unspecified,
-// because this is a special value used only to indicate
-// that the target's platform is the same as the host.
-#if HOST_PLATFORM_ID == TP_UNSPECIFIED
+#ifndef HOST_PLATFORM_ID
 #error No host platform ID was set up!
 #endif
 

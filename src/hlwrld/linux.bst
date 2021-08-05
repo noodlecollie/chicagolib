@@ -12,9 +12,11 @@
 	-ze			# Enable extensions
 	-od			# All optimisations disabled
 	-d2			# Built with symbolic information
-	-6r			# Pentium pro register calling conventions
 	-bt=linux	# Build target is Linux
 	-fo=.obj	# Object file extension is .obj
+
+[compile_options:platform=LINUX]
+	-6r			# Pentium pro register calling conventions
 	-mf			# 32-bit flat memory model (small code/small data)
 
 [sources]
