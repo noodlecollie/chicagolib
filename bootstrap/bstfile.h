@@ -117,7 +117,7 @@ static inline void BootstrapFile_SetTargetType(BootstrapFile* file, TargetType t
 
 static inline TargetPlatform BootstrapFile_GetTargetPlatform(BootstrapFile* file)
 {
-	return file ? file->targetPlatform : PLATFORM_ID;
+	return file ? file->targetPlatform : HOST_PLATFORM_ID;
 }
 
 static inline void BootstrapFile_SetTargetPlatform(BootstrapFile* file, TargetPlatform platform)

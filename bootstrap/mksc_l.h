@@ -52,12 +52,18 @@ static inline const char* GetLinkerListFileStatement(BootstrapFile* inFile)
 
 static bool WritePrelude(BootstrapFile* inFile, FILE* outFile)
 {
+	TargetPlatform targetPlatform;
 	const char* targetName;
-	const char* targetPlatform;
+	const char* targetPlatformName;
+	const char* targetHeaderDir;
+	const char* targetCCompiler;
 	const char* linkerListFileStatement;
 
+	targetPlatform = BootstrapFile_GetTargetPlatform(inFile);
 	targetName = BootstrapFile_GetTargetName(inFile);
-	targetPlatform = Platform_IDToString(BootstrapFile_GetTargetPlatform(inFile));
+	targetPlatformName = Platform_IDToString(targetPlatform);
+	targetHeaderDir = Platform_HeaderDirectory(targetPlatform != TP_UNSPECIFIED ? targetPlatform : HOST_PLATFORM_ID);
+	targetCCompiler = Platform_CCompilerName(targetPlatform != TP_UNSPECIFIED ? targetPlatform : HOST_PLATFORM_ID);
 	linkerListFileStatement = GetLinkerListFileStatement(inFile);
 
 	if ( !linkerListFileStatement )
@@ -76,10 +82,14 @@ static bool WritePrelude(BootstrapFile* inFile, FILE* outFile)
 		"\texit 1\n"
 		"fi\n\n");
 
+	// Path remains pointing to Linux dirs, because it's the path to
+	// the host compiler executables. The include path does have to
+	// change based on the target platform, however.
 	FPRINTF(outFile,
 		"export PATH=$WATCOM/binl64:$WATCOM/binl:$PATH\n"
 		"export EDPATH=$WATCOM/eddat\n"
-		"export INCLUDE=$WATCOM/lh\n\n");
+		"export INCLUDE=$WATCOM/%s\n\n",
+		targetHeaderDir);
 
 	FPRINTF(outFile, "failures=0\n\n");
 
@@ -90,11 +100,12 @@ static bool WritePrelude(BootstrapFile* inFile, FILE* outFile)
 		targetName);
 
 	FPRINTF(outFile,
-		"\twcc386 \"$1$2.c\" -i=\"$INCLUDE\"");
+		"\t%s \"$1$2.c\" -i=\"$INCLUDE\"",
+		targetCCompiler);
 
-	if ( targetPlatform && *targetPlatform )
+	if ( targetPlatformName && *targetPlatformName )
 	{
-		FPRINTF(outFile, " -bt=%s", targetPlatform);
+		FPRINTF(outFile, " -bt=%s", targetPlatformName);
 	}
 
 	FPRINTF(outFile, " %s\n\n",
@@ -167,20 +178,20 @@ static bool WriteCompileSourceFiles(BootstrapFile* inFile, FILE* outFile)
 static inline bool WriteLinkExecutable(BootstrapFile* inFile, FILE* outFile)
 {
 	const char* targetName;
-	const char* targetPlatform;
+	const char* targetPlatformName;
 
 	targetName = BootstrapFile_GetTargetName(inFile);
-	targetPlatform = Platform_IDToString(BootstrapFile_GetTargetPlatform(inFile));
+	targetPlatformName = Platform_IDToString(BootstrapFile_GetTargetPlatform(inFile));
 
 	FPRINTF(outFile,
 		"wlink name %s",
 		targetName);
 
-	if ( targetPlatform && *targetPlatform )
+	if ( targetPlatformName && *targetPlatformName )
 	{
 		FPRINTF(outFile,
 			" sys %s",
-			targetPlatform);
+			targetPlatformName);
 	}
 
 	// TODO: Options based on what was specified in the .bst file
