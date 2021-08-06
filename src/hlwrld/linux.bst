@@ -12,7 +12,6 @@
 	-ze			# Enable extensions
 	-od			# All optimisations disabled
 	-d2			# Built with symbolic information
-	-bt=linux	# Build target is Linux
 	-fo=.obj	# Object file extension is .obj
 
 [compile_options:platform=LINUX]
