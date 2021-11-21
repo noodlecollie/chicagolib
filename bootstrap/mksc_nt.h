@@ -1,5 +1,5 @@
-#ifndef BOOTSTRAP_MKSC_L_H
-#define BOOTSTRAP_MKSC_L_H
+#ifndef BOOTSTRAP_MKSC_NT_H
+#define BOOTSTRAP_MKSC_NT_H
 
 #include <stdio.h>
 #include <stdbool.h>
@@ -10,13 +10,17 @@
 #include "platform.h"
 #include "mksc_cmn.h"
 
-#define SCRIPT_FILE_EXT "sh"
-#define LK_STATEMENT_EXECUTABLE "FIL $2.obj"
-#define LK_STATEMENT_STATIC_LIB "+'$2.obj'"
+#define SCRIPT_FILE_EXT "bat"
+
+// These don't have their % signs escaped since they're used as
+// fprintf arguments, rather than a format string itself.
+#define LK_STATEMENT_EXECUTABLE "FIL %~2.obj"
+#define LK_STATEMENT_STATIC_LIB "+'%~2.obj'"
 
 #define FPRINTF(...) do { if ( fprintf(__VA_ARGS__) < 0 ) return false; } while ( false )
 
 static char OutFilePath[_MAX_PATH];
+static char PathBuffer[_MAX_PATH];
 
 static bool ComputeOutputPath(BootstrapFile* inFile)
 {
@@ -26,6 +30,16 @@ static bool ComputeOutputPath(BootstrapFile* inFile)
 	}
 
 	return Path_SetExt(OutFilePath, sizeof(OutFilePath), SCRIPT_FILE_EXT);
+}
+
+static inline void ToPathBufferUppercase(const char* input)
+{
+	if ( strcpy_s(PathBuffer, sizeof(PathBuffer), input) != 0 )
+	{
+		PathBuffer[0] = '\0';
+	}
+
+	Mksc_ToUppercase(PathBuffer);
 }
 
 static inline const char* GetLinkerListFileStatement(BootstrapFile* inFile)
@@ -53,139 +67,102 @@ static bool WritePrelude(BootstrapFile* inFile, FILE* outFile)
 {
 	TargetPlatform targetPlatform;
 	TargetPlatform adjustedPlatform;
-	const char* targetName;
-	const char* targetPlatformName;
-	const char* targetCCompiler;
-	const char* linkerListFileStatement;
 	size_t targetHeaderCount;
+	const char* targetName;
 
 	targetPlatform = BootstrapFile_GetTargetPlatform(inFile);
 	adjustedPlatform = targetPlatform != TP_UNSPECIFIED ? targetPlatform : HOST_PLATFORM_ID;
 
-	targetName = BootstrapFile_GetTargetName(inFile);
-	targetPlatformName = Platform_IDToString(targetPlatform);
-	targetCCompiler = Platform_CCompilerName(adjustedPlatform);
-	linkerListFileStatement = GetLinkerListFileStatement(inFile);
 	targetHeaderCount = Platform_HeaderDirectoryCount(adjustedPlatform);
-
-	if ( !linkerListFileStatement )
-	{
-		fprintf(stderr, "Unrecognised target type when writing %s\n", OutFilePath);
-		return false;
-	}
+	targetName = BootstrapFile_GetTargetName(inFile);
 
 	FPRINTF(outFile,
-		"# Compilation script for %s created by Bootstrap utility\n\n",
+		"@ECHO OFF\n"
+		"REM Compilation script for %s created by Bootstrap utility\n\n",
 		BootstrapFile_GetFileName(inFile));
 
 	FPRINTF(outFile,
-		"if [ -z \"$WATCOM\" ]; then\n"
-		"\techo \"No WATCOM environment variable set!\"\n"
-		"\texit 1\n"
-		"fi\n\n");
+		"IF NOT DEFINED WATCOM (\n"
+		"\tECHO No OpenWatcom toolchain specified - set path in WATCOM environment variable.\n"
+		"\tEXIT /B 1\n"
+		")\n\n");
 
-	// Path remains pointing to Linux dirs, because it's the path to
-	// the host compiler executables. The include path does have to
-	// change based on the target platform, however.
 	FPRINTF(outFile,
-		"export PATH=$WATCOM/binl64:$WATCOM/binl:$PATH\n"
-		"export EDPATH=$WATCOM/eddat\n");
+		"PATH %%WATCOM%%\\binnt64;%%WATCOM%%\\binnt;%%PATH%%\n"
+		"SET EDPATH=%%WATCOM%%\\eddat\n");
 
 	if ( targetHeaderCount > 0 )
 	{
 		size_t index;
 
 		FPRINTF(outFile,
-			"export INCLUDE=");
+			"SET INCLUDE=");
 
 		for ( index = 0; index < targetHeaderCount; ++index )
 		{
 			FPRINTF(outFile,
-				"%s$WATCOM/%s",
-				index > 0 ? ":" : "",
+				"%s%%WATCOM%%\\%s",
+				index > 0 ? ";" : "",
 				Platform_HeaderDirectory(adjustedPlatform, index));
 		}
 
 		FPRINTF(outFile,
-			"\n\n");
+			"\n");
 	}
 
 	FPRINTF(outFile,
-		"\n");
-
-	FPRINTF(outFile, "failures=0\n\n");
+			"\n");
 
 	FPRINTF(outFile,
-		"function processFile () {\n"
-		"\techo \"%s\" >> %s.lk1\n\n",
-		linkerListFileStatement,
+		"SET SCRIPTDIR=%~dp0\n\n");
+
+	FPRINTF(outFile,
+		"REM Clear out the linker file\n");
+
+	FPRINTF(outFile,
+		"ECHO.>%s.lk1\n\n",
 		targetName);
 
 	FPRINTF(outFile,
-		"\t%s \"$1$2.c\" -i=\"$INCLUDE\"",
-		targetCCompiler);
-
-	if ( targetPlatformName && *targetPlatformName )
-	{
-		FPRINTF(outFile, " -bt=%s", targetPlatformName);
-	}
-
-	FPRINTF(outFile, " %s\n\n",
-		BootstrapFile_GetCompileOptions(inFile));
-
-	FPRINTF(outFile,
-		"\tif [ $? -ne 0 ]; then\n"
-		"\t\techo \"Compilation was not successful for $1$2.c\"\n"
-		"\t\tfailures=$((failures+1))\n"
-		"\tfi\n"
-		"}\n\n");
-
-	FPRINTF(outFile,
-		"# Create empty linker file\n"
-		"> %s.lk1\n\n",
-		targetName);
+		"SET FAILURES=0\n\n");
 
 	return true;
 }
 
 static bool WriteCompileSourceFiles(BootstrapFile* inFile, FILE* outFile)
 {
-	static char filePath[_MAX_PATH];
-
-	size_t index = 0;
-	size_t fileCount = 0;
+	size_t fileCount;
+	size_t index;
 
 	fileCount = BootstrapFile_SourceFileCount(inFile);
 
 	for ( index = 0; index < fileCount; ++index )
 	{
 		FPRINTF(outFile,
-			"%secho \"[%u/%u] %s\"\n",
+			"%sECHO [%u/%u] %s\n",
 			index > 0 ? "\n" : "",
 			index + 1,
 			fileCount,
 			BootstrapFile_SourceFilePath(inFile, index));
 
-		Mksc_ExtractFileDirPath(filePath, sizeof(filePath), BootstrapFile_SourceFilePath(inFile, index));
+		Mksc_ExtractFileDirPath(PathBuffer, sizeof(PathBuffer), BootstrapFile_SourceFilePath(inFile, index));
 
 		FPRINTF(outFile,
-			"processFile \"%s\" ",
-			filePath);
+			"CALL :COMPILEFILE \"%s\" , ",
+			PathBuffer);
 
-		Path_GetFileBaseName(BootstrapFile_SourceFilePath(inFile, index), filePath, sizeof(filePath));
-		FPRINTF(outFile, "\"%s\"\n", filePath);
+		Path_GetFileBaseName(BootstrapFile_SourceFilePath(inFile, index), PathBuffer, sizeof(PathBuffer));
+
+		FPRINTF(outFile, "\"%s\"\n", PathBuffer);
 	}
 
 	FPRINTF(outFile,
-		"\nif [ $failures -ne 0 ]; then\n"
-		"\techo \"$failures file(s) failed to compile.\"\n"
-		"\texit 1\n"
-		"fi\n\n");
+		"\n");
 
 	return true;
 }
 
-static inline bool WriteLinkExecutable(BootstrapFile* inFile, FILE* outFile)
+static bool WriteLinkExecutable(BootstrapFile* inFile, FILE* outFile)
 {
 	const char* targetName;
 	const char* targetPlatformName;
@@ -212,7 +189,7 @@ static inline bool WriteLinkExecutable(BootstrapFile* inFile, FILE* outFile)
 	return true;
 }
 
-static inline bool WriteLinkStaticLib(BootstrapFile* inFile, FILE* outFile)
+static bool WriteLinkStaticLib(BootstrapFile* inFile, FILE* outFile)
 {
 	const char* targetName;
 
@@ -220,7 +197,7 @@ static inline bool WriteLinkStaticLib(BootstrapFile* inFile, FILE* outFile)
 
 	// TODO: Options based on what was specified in the .bst file
 	FPRINTF(outFile,
-		"wlib -b -c -n -q -p=512  %s.lib @%s.lk1\n\n",
+		"wlib -b -c -n -q -p=512 %s.lib @%s.lk1\n\n",
 		targetName,
 		targetName);
 
@@ -253,12 +230,73 @@ static bool WriteLinkTarget(BootstrapFile* inFile, FILE* outFile)
 	}
 
 	FPRINTF(outFile,
-		"if [ $? -ne 0 ]; then\n"
-		"\techo \"Linking was not successful.\"\n"
-		"\texit 1\n"
-		"fi\n\n");
+		"IF %%ERRORLEVEL%% NEQ 0 (\n"
+		"\tECHO Linking was unsuccessful\n"
+		"\tEXIT /B 1\n"
+		")\n\n"
+		"ECHO Done\n"
+		"GOTO :EOF\n\n");
 
-	FPRINTF(outFile, "echo \"Built target: %s\"\n", BootstrapFile_GetTargetName(inFile));
+	FPRINTF(outFile, "ECHO Built target: %s\n", BootstrapFile_GetTargetName(inFile));
+
+	return true;
+}
+
+static bool WriteCompileFileFunction(BootstrapFile* inFile, FILE* outFile)
+{
+	TargetPlatform targetPlatform;
+	TargetPlatform adjustedPlatform;
+	const char* linkerListFileStatement;
+	const char* targetCCompiler;
+	const char* targetPlatformName;
+	const char* targetName;
+
+	targetPlatform = BootstrapFile_GetTargetPlatform(inFile);
+	adjustedPlatform = targetPlatform != TP_UNSPECIFIED ? targetPlatform : HOST_PLATFORM_ID;
+
+	linkerListFileStatement = GetLinkerListFileStatement(inFile);
+	targetCCompiler = Platform_CCompilerName(adjustedPlatform);
+	targetPlatformName = Platform_IDToString(targetPlatform);
+	targetName = BootstrapFile_GetTargetName(inFile);
+
+	if ( !linkerListFileStatement )
+	{
+		fprintf(stderr, "Unrecognised target type when writing %s\n", OutFilePath);
+		return false;
+	}
+
+	FPRINTF(outFile,
+		":COMPILEFILE\n");
+
+	FPRINTF(outFile,
+		"ECHO %s>>%s.lk1\n\n",
+		linkerListFileStatement,
+		targetName);
+
+	FPRINTF(outFile,
+		"REM These compile options were generated by Open Watcom's ide.exe when building in release mode.\n");
+
+	FPRINTF(outFile,
+		"%s \"%%~1%%~2.c\" -i=\"%%INCLUDE%%\"",
+		targetCCompiler
+	);
+
+	if ( targetPlatformName && *targetPlatformName )
+	{
+		FPRINTF(outFile, " -bt=%s", targetPlatformName);
+	}
+
+	FPRINTF(outFile, " %s\n\n",
+		BootstrapFile_GetCompileOptions(inFile));
+
+	FPRINTF(outFile,
+		"REM For some reason ERRORLEVEL doesn't get set properly on Windows, so we check for a .err file instead.\n"
+		"IF EXIST %%~2.ERR (\n"
+		"\tECHO Compilation was not successful for %%~2.c\n"
+		"\tSET /a FAILURES=FAILURES+1\n"
+		")\n"
+		"\n"
+		"EXIT /B 0\n");
 
 	return true;
 }
@@ -268,7 +306,8 @@ static inline bool WriteScript(BootstrapFile* inFile, FILE* outFile)
 	return
 		WritePrelude(inFile, outFile) &&
 		WriteCompileSourceFiles(inFile, outFile) &&
-		WriteLinkTarget(inFile, outFile);
+		WriteLinkTarget(inFile, outFile) &&
+		WriteCompileFileFunction(inFile, outFile);
 }
 
 static bool MakeScript_Impl(BootstrapFile* inFile)
@@ -301,7 +340,9 @@ static bool MakeScript_Impl(BootstrapFile* inFile)
 		remove(OutFilePath);
 	}
 
+	VLOG("Writing script file was %s\n", success ? "successful" : "not successful");
+
 	return success;
 }
 
-#endif // BOOTSTRAP_MKSC_L_H
+#endif // BOOTSTRAP_MKSC_NT_H

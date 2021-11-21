@@ -270,7 +270,7 @@ static ParseState ParseLine_SourceFile(BootstrapFile* file, size_t lineNumber, c
 {
 	static char absPath[_MAX_PATH];
 
-	if ( sprintf_s(absPath, sizeof(absPath), "%s/%s", RootDir, line) < 0 )
+	if ( sprintf_s(absPath, sizeof(absPath), "%s%s%s", RootDir, PATH_SEP_STR, line) < 0 )
 	{
 		fprintf(stderr, "%s(%u): Error: Could not construct absolute path for %s.\n",
 			BootstrapFile_GetFilePath(file),

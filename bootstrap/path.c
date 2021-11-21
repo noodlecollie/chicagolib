@@ -187,12 +187,6 @@ bool Path_GetFileBaseName(const char* path, char* buffer, size_t length)
 	lastSep = Path_IndexOfLastSeparator(path);
 	dotIndex = Path_IndexOfExtensionSeparator(path);
 
-	// lastSep = 1
-	// dotIndex = 5
-	// first valid = 2
-	// last valid = 4
-	// length of valid = 3
-
 	if ( dotIndex - lastSep - 1 >= length )
 	{
 		// Too big.

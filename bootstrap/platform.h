@@ -2,13 +2,17 @@
 #define BOOTSTRAP_PLATFORM_H
 
 #include <stdbool.h>
+#include <stddef.h>
+
+// Maximum length of the "Header dirs" string below:
+#define PLATFORM_MAX_HEADER_DIR_STR_LENGTH 256
 
 #define TARGET_PLATFORM_LIST \
-	/*        ID                  Plat str   Header dir  C compiler */ \
-	LIST_ITEM(TP_UNSPECIFIED = 0, "",        "",         ""          ) \
-	LIST_ITEM(TP_LINUX,           "LINUX",   "lh",       "wcc386"    ) \
-	LIST_ITEM(TP_WINDOWS,         "NT",      "h",        "wcc386"    ) \
-	LIST_ITEM(TP_DOS,             "DOS",     "h",        "wcc"       )
+	/*        ID                  Plat str   Header dirs                             C compiler */ \
+	LIST_ITEM(TP_UNSPECIFIED = 0, "",        "",                                     ""          ) \
+	LIST_ITEM(TP_LINUX,           "LINUX",   "lh",                                   "wcc386"    ) \
+	LIST_ITEM(TP_WINDOWS,         "NT",      "h\0h\\nt\0h\\nt\\directx\0h\\nt\\ddk", "wcc386"    ) \
+	LIST_ITEM(TP_DOS,             "DOS",     "h",                                    "wcc"       )
 
 #if defined(__NT__) || defined(__DOS__)
 #define PATH_SEP_CHAR '\\'
@@ -40,7 +44,9 @@ typedef enum _TargetPlatform
 const char* Platform_IDToString(TargetPlatform platform);
 bool Platform_StringToID(const char* str, TargetPlatform* outPlatform);
 
-const char* Platform_HeaderDirectory(TargetPlatform platform);
+size_t Platform_HeaderDirectoryCount(TargetPlatform platform);
+const char* Platform_HeaderDirectory(TargetPlatform platform, size_t index);
+
 const char* Platform_CCompilerName(TargetPlatform platform);
 
 #endif // BOOTSTRAP_PLATFORM_H
