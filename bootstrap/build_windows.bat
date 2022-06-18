@@ -15,13 +15,13 @@ ECHO.>bootstrap.lk1
 
 SET failures=0
 
-CALL :CompileFile %SCRIPTDIR%\ , main
-CALL :CompileFile %SCRIPTDIR%\ , bstfile
-CALL :CompileFile %SCRIPTDIR%\ , bstparse
-CALL :CompileFile %SCRIPTDIR%\ , path
-CALL :CompileFile %SCRIPTDIR%\ , options
-CALL :CompileFile %SCRIPTDIR%\ , mkscript
-CALL :CompileFile %SCRIPTDIR%\ , platform
+CALL :CompileFile "%SCRIPTDIR%\" , main
+CALL :CompileFile "%SCRIPTDIR%\" , bstfile
+CALL :CompileFile "%SCRIPTDIR%\" , bstparse
+CALL :CompileFile "%SCRIPTDIR%\" , path
+CALL :CompileFile "%SCRIPTDIR%\" , options
+CALL :CompileFile "%SCRIPTDIR%\" , mkscript
+CALL :CompileFile "%SCRIPTDIR%\" , platform
 
 IF %failures% NEQ 0 (
 	echo %failures% files failed to compile.
